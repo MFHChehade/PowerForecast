@@ -312,7 +312,7 @@ class FM:
 # --------------------------------------------------------------------------- driver
 
 def feasible(trace, H):
-    """Long-horizon cap: at least 50 validation and 100 test windows (see horizon_consistency.py --feasible)."""
+    """Long-horizon cap: at least 50 validation and 100 test windows."""
     return H <= MAX_HORIZON.get(trace, 336)
 
 

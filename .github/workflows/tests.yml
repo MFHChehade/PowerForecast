@@ -17,5 +17,6 @@ jobs:
         run: |
           pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
+          pip install --no-deps neuralforecast==3.3.0
           pip install -e ".[test]"
       - run: pytest -q

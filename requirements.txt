@@ -7,7 +7,14 @@ scikit-learn==1.7.2
 matplotlib>=3.9          # analysis figures
 torch==2.6.0             # CUDA build for real runs
 optuna==4.8.0
-neuralforecast==3.3.0
+# neuralforecast==3.3.0 is installed with --no-deps (it asks for torch>=2.9.1; the results used 2.6.0). Its dependencies:
+pytorch-lightning==2.6.6
+coreforecast==0.0.18
+utilsforecast==0.2.17
+ray[train,tune]==2.59.0
+safetensors>=0.8.0
+fsspec
+tornado>=6.5.5
 lightgbm==4.6.0
 statsforecast==2.0.1     # AutoETS reference
 chronos-forecasting==2.2.2

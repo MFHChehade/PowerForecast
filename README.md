@@ -23,6 +23,7 @@ Use Python 3.11 and a GPU. The commands below assume a Slurm cluster, and we ran
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
+pip install --no-deps neuralforecast==3.3.0                  # newer torch is requested, but the results used 2.6.0
 pip install timesfm==2.0.0                                   # TimesFM-2.5
 pip install --target "$PWD/vendor/timesfm3_pkgs" timesfm==3.0.2
 git clone https://github.com/mistralai/timestral vendor/timestral_src   # commit a534bdb
