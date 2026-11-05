@@ -1,6 +1,4 @@
-"""Structural smoke tests: everything imports, the registry is complete, every
-forecaster produces a well-formed prediction. No external data required.
-"""
+"""Checks of the evaluation protocol on made-up data. No GPU or dataset needed."""
 from __future__ import annotations
 
 import importlib
@@ -8,46 +6,44 @@ import importlib
 import numpy as np
 import pytest
 
-PACKAGE_MODULES = [
-    "powerforecast", "powerforecast.config", "powerforecast.utils", "powerforecast.scenarios",
-    "powerforecast.data", "powerforecast.data.datasets", "powerforecast.data.windows",
-    "powerforecast.data.extension",
-    "powerforecast.models", "powerforecast.models.base", "powerforecast.models.classical",
-    "powerforecast.models.ml", "powerforecast.models.deep", "powerforecast.models.foundation",
-    "powerforecast.models.registry",
-    "powerforecast.evaluation", "powerforecast.evaluation.metrics",
-    "powerforecast.evaluation.splits", "powerforecast.evaluation.runner",
-    "powerforecast.analysis", "powerforecast.analysis.paired_stats",
-]
+import run_fm_sweep as sw
 
 
-@pytest.mark.parametrize("module", PACKAGE_MODULES)
+@pytest.mark.parametrize("module", ["powerforecast", "powerforecast.config", "powerforecast.data", "run_fm_sweep"])
 def test_module_imports(module):
     importlib.import_module(module)
 
 
-def test_registry_builds_every_model():
-    from powerforecast.models import FAMILIES, FAMILY_OF, create
-    for family, names in FAMILIES.items():
-        for name in names:
-            fc = create(name)
-            assert fc.family == family
-            assert FAMILY_OF[name] == family
+def _cell(H=24, L=64):
+    rng = np.random.RandomState(0)
+    series = [50 + np.cumsum(rng.randn(4000)) for _ in range(2)]
+    trace = "mit"
+    return sw.Cell(trace, series, H, L), series
 
 
-def test_registry_rejects_unknown_model():
-    from powerforecast.models import create
-    with pytest.raises(KeyError):
-        create("NoSuchModel")
+def test_targets_stay_in_their_split():
+    """Train targets end inside the first 60%; test targets start in the final 25%."""
+    cell, series = _cell()
+    assert all(t + cell.H <= int(0.60 * len(series[s])) for s, t in cell.pos["tr"])
+    assert all(t >= int(0.75 * len(series[s])) for s, t in cell.pos["te"])
 
 
-@pytest.mark.parametrize("model", ["Persistence", "SeasonalNaive24", "MovingAvg6",
-                                   "ExpSmoothing", "RidgeLag", "NLinear", "DLinear", "MLP"])
-def test_forecaster_prediction_shape(model, synthetic_series):
-    from powerforecast.evaluation.splits import make_split
-    from powerforecast.models import create
-    horizon = 6
-    split = make_split(synthetic_series, context=48, horizon=horizon)
-    pred = create(model).predict(split, horizon)
-    assert pred.shape == (len(split["Xte"]), horizon)
-    assert np.isfinite(pred).all()
+def test_test_windows_do_not_depend_on_context():
+    """Every context length is scored on the same test windows."""
+    short, _ = _cell(L=32)
+    long, _ = _cell(L=256)
+    assert short.test_id == long.test_id
+    np.testing.assert_array_equal(short.Yte, long.Yte)
+
+
+def test_persistence_repeats_the_last_reading():
+    cell, _ = _cell()
+    pred, _, _ = sw.run_local(cell, "Persistence")
+    np.testing.assert_array_equal(pred, np.repeat(cell.Xte[:, -1:], cell.H, 1))
+
+
+def test_windows_are_cut_correctly():
+    cell, series = _cell()
+    s, t = cell.pos["te"][0]
+    np.testing.assert_array_equal(cell.Xte[0], series[s][t - cell.L:t].astype(np.float32))
+    np.testing.assert_array_equal(cell.Yte[0], series[s][t:t + cell.H].astype(np.float32))

@@ -9,8 +9,8 @@
 # claiming (model, trace, horizon) tasks from scripts/tacc_worker.py. Resubmit to resume.
 WORKERS=${WORKERS:-16}
 cd "$SLURM_SUBMIT_DIR"
-source "$WORK/pf_tacc/venv/bin/activate"
-export PF_STUDY_SPLIT=1 PF_SLOW_TRIALS=20 PF_NF_PKGS=/nonexistent PF_NJOBS=4
+source "${PF_VENV:-.venv}/bin/activate"
+export PF_STUDY_SPLIT=1 PF_SLOW_TRIALS=20 PF_NJOBS=4
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 PYTHONUNBUFFERED=1
 nvidia-smi --query-gpu=name,memory.total --format=csv
 python scripts/run_cov_hpo.py release

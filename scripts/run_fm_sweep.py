@@ -1,11 +1,11 @@
-"""Foundation-model size x context-window sweep across all datasets, against every baseline family.
+"""Foundation-model size x context-window sweep across all datasets, with three reference baselines.
 
 Design (the part a reviewer checks first):
   * Every trace is a list of univariate series (one per GPU / node / run where applicable).
   * Per-series chronological split: train = first 60%, val = next 15%, test = last 25%.
   * Test and validation windows are sampled ONCE per (trace, horizon) from target positions that
     admit the largest context of that trace, so every model and every context length is scored on
-    the identical windows. Only the training windows (used by ML/DL baselines) depend on context.
+    the identical windows. Only the training windows depend on context.
   * Foundation models are zero-shot and see only each window's context.
   * Context per model is later selected on VALIDATION error, never test error.
 
@@ -52,7 +52,6 @@ CONTEXTS = [32, 64, 128, 256, 512, 1024]
 HORIZONS = [int(h) for h in os.environ.get("PF_HORIZONS", "24,6").split(",")]
 MAX_HORIZON = {"lnn": 64, "surf": 256}  # these two traces run out of validation windows beyond this
 N_TEST, N_VAL, N_TRAIN = 300, 200, 4000
-DL_SEEDS = [0, 1, 2]
 MAX_FILL = 6  # longest outage (in samples) that is linearly interpolated rather than split on
 
 # period = natural seasonal period in steps (daily cycle) where one exists; None = no natural season.
@@ -69,11 +68,7 @@ TRACES = {
     "aurora":    dict(loaders=["alcf_aurora"],                    period=24,   L_max=1024),
 }
 
-LOCAL_MODELS = {  # name -> family
-    "Persistence": "classical", "SeasonalNaive": "classical", "AutoETS": "classical",
-    "RidgeLag": "ml", "LightGBM": "ml",
-    "NLinear": "dl", "DLinear": "dl", "PatchTST": "dl",
-}
+LOCAL_MODELS = {"Persistence": "classical", "SeasonalNaive": "classical", "AutoETS": "classical"}  # reference baselines
 FM_MODELS = {  # name -> (family, params_millions)
     "chronos_bolt_tiny":  ("chronos_bolt", 9),
     "chronos_bolt_mini":  ("chronos_bolt", 21),
@@ -223,38 +218,8 @@ def done(trace, H, L, model):
 
 # --------------------------------------------------------------------- local models
 
-def instnorm(fn):
-    """Per-window standardisation (RevIN-style) around an ML/DL model, using context stats only."""
-    def wrapped(split, H):
-        # Floor the per-window std at the trace's typical one-step change (the MASE scale): flat
-        # contexts otherwise give near-zero std, and a later jump becomes a huge normalized target.
-        floor = split["scale"]
-        def stats(X):
-            mu = X.mean(1, keepdims=True)
-            sd = np.maximum(X.std(1, keepdims=True), floor)
-            return mu, sd
-        mtr, str_ = stats(split["Xtr"]); mva, sva = stats(split["Xva"]); mte, ste = stats(split["Xte"])
-        s2 = dict(split)
-        s2["Xtr"], s2["Ytr"] = (split["Xtr"] - mtr) / str_, (split["Ytr"] - mtr) / str_
-        s2["Xva"], s2["Yva"] = (split["Xva"] - mva) / sva, (split["Yva"] - mva) / sva
-        s2["Xte"] = (split["Xte"] - mte) / ste
-        p_te, p_va = fn(s2, H)
-        return p_te * ste + mte, p_va * sva + mva
-    return wrapped
-
-
-def _predict_both(forecaster, split, H):
-    """Package forecasters predict on split['Xte']; run twice to get test and val predictions."""
-    p_te = forecaster.predict(split, H)
-    s_va = dict(split); s_va["Xte"] = split["Xva"]
-    p_va = forecaster.predict(s_va, H)
-    return p_te, p_va
-
-
 def run_local(cell, model):
-    from powerforecast.models import create
     H, L = cell.H, cell.L
-    split = cell.split()
     period = TRACES[cell.trace]["period"]
 
     if model == "Persistence":
@@ -279,45 +244,7 @@ def run_local(cell, model):
                     out[i] = row[-1]
             return out
         return f(cell.Xte), f(cell.Xva), {}
-    if model in ("RidgeLag", "LightGBM"):
-        fc = create(model)
-        p_te, p_va = instnorm(lambda s, h: _predict_both(fc, s, h))(split, H)
-        return p_te, p_va, {}
-    if model in ("NLinear", "DLinear", "PatchTST"):
-        import powerforecast.models.deep as deep
-        tes, vas = [], []
-        for sd in DL_SEEDS:
-            deep.SEED = sd
-            fc = create(model)
-            p_te, p_va = instnorm(lambda s, h: _predict_both(fc, s, h))(split, H)
-            tes.append(p_te); vas.append(p_va)
-        deep.SEED = 42
-        # per-seed errors are kept for the record; the scored prediction is the seed-mean MAE,
-        # computed by averaging per-window errors (not by ensembling predictions)
-        return tes, vas, {"seeds": DL_SEEDS}
     raise ValueError(model)
-
-
-def save_local(cell, model, out, seconds):
-    family = LOCAL_MODELS[model]
-    p_te, p_va, extra = out
-    if isinstance(p_te, list):  # multi-seed DL: score = mean over seeds of per-window error
-        err_te = np.mean([np.mean(np.abs(cell.Yte - p), axis=1) for p in p_te], axis=0)
-        err_va = np.mean([np.mean(np.abs(cell.Yva - p), axis=1) for p in p_va], axis=0)
-        seed_mase = [float(np.mean(np.abs(cell.Yte - p)) / cell.scale) for p in p_te]
-        extra = dict(extra, seed_test_mase=seed_mase)
-        rec = dict(trace=cell.trace, H=cell.H, L=cell.L, model=model, family=family,
-                   test_mae=float(err_te.mean()), val_mae=float(err_va.mean()),
-                   test_mase=float(err_te.mean() / cell.scale), val_mase=float(err_va.mean() / cell.scale),
-                   n_test=len(err_te), n_val=len(err_va), n_train=len(cell.Xtr), test_id=cell.test_id,
-                   seconds=round(seconds, 2), **extra)
-        p = cell_path(cell.trace, cell.H, cell.L, model)
-        np.savez_compressed(p.with_suffix(".npz"), test_err=err_te, val_err=err_va)
-        p.with_suffix(".json").write_text(json.dumps(rec))
-        print(f"  {cell.trace:9s} H{cell.H:<3d} L{cell.L:<5d} {model:20s} MASE={rec['test_mase']:.3f} "
-              f"val={rec['val_mase']:.3f} seeds={[round(x, 3) for x in seed_mase]} ({seconds:.1f}s)", flush=True)
-    else:
-        save(cell, model, family, p_te, p_va, seconds, extra)
 
 
 # ------------------------------------------------------------------ foundation models
@@ -336,7 +263,7 @@ class FM:
             self.pipe = Chronos2Pipeline.from_pretrained("amazon/chronos-2", device_map=self.dev)
         elif name == "timesfm_2p5_200m":
             import timesfm
-            # same loader call as powerforecast.models.foundation.load_timesfm (from_pretrained
+            # from_pretrained
             # trips on a huggingface_hub kwarg mismatch in this environment)
             self.model = timesfm.TimesFM_2p5_200M_torch._from_pretrained(
                 model_id="google/timesfm-2.5-200m-pytorch", revision=None, cache_dir=None,
@@ -438,7 +365,7 @@ def main():
                     continue
                 if out is None:
                     continue
-                save_local(cell, m, out, time.time() - t0)
+                save(cell, m, LOCAL_MODELS[m], out[0], out[1], time.time() - t0, out[2])
         return
 
     models = args.models or list(FM_MODELS)
