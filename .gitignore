@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+.pytest_cache/
+# large inputs and generated results are not committed
+/data/*
+!/data/README.md
+/outputs/*
+!/outputs/.gitkeep
+*.aux
+*.log
+*.out
+# personal connection helpers and local launchers
+scripts/vput.py
+scripts/launch_hpo_workers.ps1
+vendor/

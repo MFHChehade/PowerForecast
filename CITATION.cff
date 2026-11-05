@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite it as below."
+title: "PowerForecast: pretrained time-series foundation models versus tuned site models for data-center load forecasting"
+type: software
+authors:
+  - family-names: Chehade
+    given-names: Mohamad
+    email: chehade@utexas.edu
+year: 2026
+license: MIT
+repository-code: "https://github.com/MFHChehade/PowerForecast"
+abstract: >-
+  Benchmark code comparing zero-shot time-series foundation models (TimesFM,
+  Chronos, Timestral) with 22 tuned site-trained models for power and GPU-demand
+  forecasting on eight data-center datasets.

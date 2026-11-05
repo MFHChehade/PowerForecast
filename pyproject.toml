@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "powerforecast"
+version = "1.0.0"
+description = "Benchmarking classical, ML, deep-learning, and time-series foundation models for data-center power/demand forecasting"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Mohamad Chehade", email = "chehade@utexas.edu" }]
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["powerforecast*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:X does not have valid feature names:UserWarning",
+]

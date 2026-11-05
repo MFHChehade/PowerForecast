@@ -1,0 +1,24 @@
+# Core (pinned to the versions used in the study)
+numpy==1.26.4
+pandas==2.1.4
+pyarrow>=14,<20          # parquet IO
+scikit-learn==1.7.2
+scipy>=1.11              # spearman correlation in the figures
+statsforecast==2.0.1     # AutoETS / Theta / AutoARIMA
+lightgbm==4.6.0
+xgboost==3.1.3
+torch==2.6.0             # deep-learning models (CUDA build recommended)
+matplotlib==3.10.9
+
+# Time-series foundation models (needed only for the foundation-model rows).
+# Install per each project's instructions; versions used here:
+#   timesfm            (TimesFM 2.5, google/timesfm-2.5-200m-pytorch)
+#   chronos-forecasting==2.2.2   (ChronosBolt)
+#   uni2ts==2.0.0                (Moirai)
+#   momentfm                     (MOMENT)
+
+# Tuning and the newer foundation models (scripts/ only; install per each project's instructions):
+#   optuna
+#   neuralforecast               (some site models)
+#   chronos-forecasting          (Chronos-2)
+#   TimesFM 3.0, Timestral       (separate install folders, set PF_TIMESFM3_PKGS and PF_TIMESTRAL_PKGS)
